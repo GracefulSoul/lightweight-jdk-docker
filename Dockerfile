@@ -2,14 +2,14 @@
 FROM amazoncorretto:21-alpine AS jrebuilder
 
 # Add the application jar to the container
-COPY ./build/libs/hello-docker-*-SNAPSHOT.jar /app.jar
+COPY ./build/libs/hello-docker-*-SNAPSHOT.jar app.jar
 
 # Install binutils
 RUN apk add --no-cache binutils
 
 # Extract jar file and generate custom JRE using dependency
-RUN mkdir -p /app && (cd /app; jar -xf /app.jar) \
-	&& DEPENDENCY=$(jdeps --ignore-missing-deps --print-module-deps --recursive --multi-release 21 --class-path="/app/BOOT-INF/lib/*" /app.jar) \
+RUN java -Djarmode=tools -jar app.jar extract --layers --launcher \
+	&& DEPENDENCY=$(jdeps --ignore-missing-deps --print-module-deps --recursive --multi-release 21 --class-path="/app/dependencies/BOOT-INF/lib/*" /app.jar) \
 	&& ${JAVA_HOME}/bin/jlink \
 		--verbose \
 		--add-modules ${DEPENDENCY} \
@@ -17,8 +17,7 @@ RUN mkdir -p /app && (cd /app; jar -xf /app.jar) \
 		--no-man-pages \
 		--no-header-files \
 		--compress=2 \
-		--output \
-		customjre
+		--output customjre
 
 # Stage 2. Make container for application
 FROM alpine:3.20
@@ -33,12 +32,13 @@ LABEL maintainer="GracefulSoul on <gracefulsoul@github.com>"
 COPY --from=jrebuilder /customjre ${JAVA_HOME}
 
 # Copy extract files in jar
-COPY --from=jrebuilder ${DEPENDENCY}/BOOT-INF/lib ${DEPENDENCY}/lib
-COPY --from=jrebuilder ${DEPENDENCY}/META-INF ${DEPENDENCY}/META-INF
-COPY --from=jrebuilder ${DEPENDENCY}/BOOT-INF/classes ${DEPENDENCY}
+COPY --from=jrebuilder ${DEPENDENCY}/dependencies/ ${DEPENDENCY}/
+COPY --from=jrebuilder ${DEPENDENCY}/snapshot-dependencies/ ${DEPENDENCY}/
+COPY --from=jrebuilder ${DEPENDENCY}/spring-boot-loader/ ${DEPENDENCY}/
+COPY --from=jrebuilder ${DEPENDENCY}/application/ ${DEPENDENCY}/
 
 # Move work directory
 WORKDIR ${DEPENDENCY}
 
 # Run application
-ENTRYPOINT [ "java", "-cp", "${DEPENDENCY}:${DEPENDENCY}/lib/*", "gracefulsoul.HelloDockerApplication" ]
+ENTRYPOINT [ "java", "org.springframework.boot.loader.launch.JarLauncher" ]
