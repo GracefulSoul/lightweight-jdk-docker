@@ -23,10 +23,14 @@ RUN java -Djarmode=tools -jar app.jar extract --layers --launcher \
 FROM alpine:3.20
 ENV JAVA_HOME=/jre
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
-ARG DEPENDENCY=/app
+ENV DEPENDENCY=/app
 
 # Add Maintainer Info
 LABEL maintainer="GracefulSoul on <gracefulsoul@github.com>"
+
+# Copy run.sh and change mode to 755
+COPY ./run.sh /
+RUN chmod 755 /run.sh
 
 # Copy custom JRE
 COPY --from=jrebuilder /customjre ${JAVA_HOME}
@@ -41,4 +45,4 @@ COPY --from=jrebuilder ${DEPENDENCY}/application/ ${DEPENDENCY}/
 WORKDIR ${DEPENDENCY}
 
 # Run application
-ENTRYPOINT [ "java", "org.springframework.boot.loader.launch.JarLauncher" ]
+ENTRYPOINT [ "/bin/sh", "/run.sh" ]
